@@ -11,6 +11,8 @@
 #![allow(non_camel_case_types)]
 #![allow(dead_code)]
 
+use std::convert::*;
+
 cfg_if::cfg_if! {
   if #[cfg(nasm_x86_64)] {
     pub use crate::asm::x86::predict::*;
@@ -28,6 +30,8 @@ use crate::partition::*;
 use crate::tiling::*;
 use crate::transform::*;
 use crate::util::*;
+
+pub use rcore::predict::*;
 
 pub static RAV1E_INTRA_MODES: &[PredictionMode] = &[
   PredictionMode::DC_PRED,
@@ -57,79 +61,98 @@ pub static RAV1E_INTER_COMPOUND_MODES: &[PredictionMode] = &[
   PredictionMode::NEAR_NEARMV,
 ];
 
-#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
-pub enum PredictionMode {
-  DC_PRED,     // Average of above and left pixels
-  V_PRED,      // Vertical
-  H_PRED,      // Horizontal
-  D45_PRED,    // Directional 45  deg = round(arctan(1/1) * 180/pi)
-  D135_PRED,   // Directional 135 deg = 180 - 45
-  D117_PRED,   // Directional 117 deg = 180 - 63
-  D153_PRED,   // Directional 153 deg = 180 - 27
-  D207_PRED,   // Directional 207 deg = 180 + 27
-  D63_PRED,    // Directional 63  deg = round(arctan(2/1) * 180/pi)
-  SMOOTH_PRED, // Combination of horizontal and vertical interpolation
-  SMOOTH_V_PRED,
-  SMOOTH_H_PRED,
-  PAETH_PRED,
-  UV_CFL_PRED,
-  NEARESTMV,
-  NEAR0MV,
-  NEAR1MV,
-  NEAR2MV,
-  GLOBALMV,
-  NEWMV,
-  // Compound ref compound modes
-  NEAREST_NEARESTMV,
-  NEAR_NEARMV,
-  NEAREST_NEWMV,
-  NEW_NEARESTMV,
-  NEAR_NEWMV,
-  NEW_NEARMV,
-  GLOBAL_GLOBALMV,
-  NEW_NEWMV,
-}
+/// This exists purely to allow specializing kernels to a single
+/// prediction mode.
+pub mod detail {
+  use super::*;
 
-#[derive(Copy, Clone, Debug)]
-pub enum PredictionVariant {
-  NONE,
-  LEFT,
-  TOP,
-  BOTH,
-}
+  pub trait Detail {
+    const MODE: PredictionMode;
+    /*
+    const IS_INTRA: bool = Self::MODE < PredictionMode::NEARESTMV;
+    const IS_CFL: bool = Self::MODE == PredictionMode::UV_CFL_PRED;
+    const IS_DIRECTIONAL: bool =
+      Self::MODE >= PredictionMode::V_PRED &&
+        Self::MODE <= PredictionMode::D63_PRED;
+    */
+    fn predict_intra<S, P>(
+      tile_rect: TileRect, dst: &mut PlaneRegionMut<'_, P>, bit_depth: usize,
+      ac: &[i16], alpha: i16,
+      edge_buf: &AlignedArray<[P; 4 * MAX_TX_SIZE + 1]>,
+      cpu: CpuFeatureLevel,
+    ) where
+      P: Pixel,
+      S: Intra<P> + tx_sizes::Detail,
+    {
+      Self::MODE.predict_intra::<P>(
+        tile_rect, dst, S::TX_SIZE, bit_depth, ac, alpha, edge_buf, cpu,
 
-impl PredictionVariant {
-  fn new(x: usize, y: usize) -> Self {
-    match (x, y) {
-      (0, 0) => PredictionVariant::NONE,
-      (_, 0) => PredictionVariant::LEFT,
-      (0, _) => PredictionVariant::TOP,
-      _ => PredictionVariant::BOTH,
+      )
     }
   }
+
+  macro_rules! d {
+    ($(($ty:ident, $mode:ident,),)*) => {$(
+      #[derive(Clone, Copy, Debug)]
+      pub struct $ty;
+
+      impl Detail for $ty {
+        const MODE: PredictionMode = PredictionMode::$mode;
+      }
+    )*};
+  }
+  d! {
+    (Dc, DC_PRED, ),
+    (V,  V_PRED, ),
+    (H,  H_PRED, ),
+    (D45, D45_PRED, ),
+    (D135, D135_PRED, ),
+    (D117, D117_PRED, ),
+    (D153, D153_PRED, ),
+    (D207, D207_PRED, ),
+    (D63, D63_PRED, ),
+    (Smooth, SMOOTH_PRED, ),
+    (SmoothV, SMOOTH_V_PRED, ),
+    (SmoothH, SMOOTH_H_PRED, ),
+    (Paeth, PAETH_PRED, ),
+    (UvCfl, UV_CFL_PRED, ),
+    (NearestMv, NEARESTMV, ),
+    (Near0Mv, NEAR0MV, ),
+    (Near1Mv, NEAR1MV, ),
+    (Near2Mv, NEAR2MV, ),
+    (GlobalMv, GLOBALMV, ),
+    (NewMv, NEWMV, ),
+    (NearestNearestMv, NEAREST_NEARESTMV, ),
+    (NearNearMv, NEAR_NEARMV, ),
+    (NearestNewMv, NEAREST_NEWMV, ),
+    (NewNearestMv, NEW_NEARESTMV, ),
+    (NearNewMv, NEAR_NEWMV, ),
+    (NewNearMv, NEW_NEARMV, ),
+    (GlobalGlobalMv, GLOBAL_GLOBALMV, ),
+    (NewNewMv, NEW_NEWMV, ),
+  }
 }
 
-impl Default for PredictionMode {
-  fn default() -> Self {
-    PredictionMode::DC_PRED
-  }
+pub trait PredictIntraInter {
+  fn predict_intra<T: Pixel>(
+    self, tile_rect: TileRect, dst: &mut PlaneRegionMut<'_, T>,
+    tx_size: TxSize, bit_depth: usize, ac: &[i16], alpha: i16,
+    edge_buf: &AlignedArray<[T; 4 * MAX_TX_SIZE + 1]>, cpu: CpuFeatureLevel,
+  );
+  fn predict_inter<T: Pixel>(
+    self, fi: &FrameInvariants<T>, tile_rect: TileRect, p: usize,
+    po: PlaneOffset, dst: &mut PlaneRegionMut<'_, T>, width: usize,
+    height: usize, ref_frames: [RefType; 2], mvs: [MotionVector; 2],
+  );
 }
-
-impl PredictionMode {
-  pub fn is_compound(self) -> bool {
-    self >= PredictionMode::NEAREST_NEARESTMV
-  }
-  pub fn has_near(self) -> bool {
-    (self >= PredictionMode::NEAR0MV && self <= PredictionMode::NEAR2MV)
-      || self == PredictionMode::NEAR_NEARMV
-      || self == PredictionMode::NEAR_NEWMV
-      || self == PredictionMode::NEW_NEARMV
-  }
-  pub fn predict_intra<T: Pixel>(
+impl PredictIntraInter for PredictionMode {
+  fn predict_intra<T: Pixel>(
     self, tile_rect: TileRect, dst: &mut PlaneRegionMut<'_, T>,
     tx_size: TxSize, bit_depth: usize, ac: &[i16], alpha: i16,
     edge_buf: &AlignedArray<[T; 4 * MAX_TX_SIZE + 1]>, cpu: CpuFeatureLevel,
   ) {
+    use rkernels::predict::dispatch;
+
     assert!(self.is_intra());
     let &Rect { x: frame_x, y: frame_y, .. } = dst.rect();
     debug_assert!(frame_x >= 0 && frame_y >= 0);
@@ -150,6 +173,47 @@ impl PredictionMode {
       _ => self,
     };
 
+    {
+      let w = tx_size.width();
+      let h = tx_size.height();
+
+      let angle = match mode {
+        PredictionMode::D45_PRED => 45,
+        PredictionMode::D135_PRED => 135,
+        PredictionMode::D117_PRED => 113,
+        PredictionMode::D153_PRED => 157,
+        PredictionMode::D207_PRED => 203,
+        PredictionMode::D63_PRED => 67,
+        _ => 0,
+      };
+
+      assert!(
+        dst.rect().height >= h && dst.rect().width >= w,
+        "dst is smaller than the compute block: ({}, {}) < ({}, {})",
+        dst.rect().width, dst.rect().height, w, h,
+      );
+
+      let (left, not_left) = edge_buf.split_at(2 * MAX_TX_SIZE);
+      let (top_left, above) = not_left.split_at(1);
+
+      let above = &above[..w + h];
+      let left = &left[2 * MAX_TX_SIZE - h..];
+
+      let dst_stride = dst.plane_cfg.stride;
+
+      let r = unsafe {
+        dispatch(dst.data_ptr_mut(),
+                 dst_stride.try_into().expect("trunc overflow"),
+                 ac, alpha, above.as_ptr(), left.as_ptr(), top_left.as_ptr(), angle,
+                 bit_depth.try_into().expect("trunc overflow"),
+                 w.try_into().unwrap(), h.try_into().unwrap(),
+                 mode as usize, variant as usize,
+                 tx_size.block_size(),
+                 cpu)
+      };
+      if let Some(()) = r { return; }
+    }
+
     let angle = match mode {
       PredictionMode::UV_CFL_PRED => alpha as isize,
       PredictionMode::D45_PRED => 45,
@@ -166,19 +230,7 @@ impl PredictionMode {
     );
   }
 
-  pub fn is_intra(self) -> bool {
-    self < PredictionMode::NEARESTMV
-  }
-
-  pub fn is_cfl(self) -> bool {
-    self == PredictionMode::UV_CFL_PRED
-  }
-
-  pub fn is_directional(self) -> bool {
-    self >= PredictionMode::V_PRED && self <= PredictionMode::D63_PRED
-  }
-
-  pub fn predict_inter<T: Pixel>(
+  fn predict_inter<T: Pixel>(
     self, fi: &FrameInvariants<T>, tile_rect: TileRect, p: usize,
     po: PlaneOffset, dst: &mut PlaneRegionMut<'_, T>, width: usize,
     height: usize, ref_frames: [RefType; 2], mvs: [MotionVector; 2],
@@ -378,27 +430,15 @@ pub static extend_modes: [u8; INTRA_MODES] = [
   NEED_LEFT | NEED_ABOVE | NEED_ABOVELEFT, // PAETH
 ];
 
-pub trait Dim {
-  const W: usize;
-  const H: usize;
-}
-
-macro_rules! blocks_dimension {
-  ($(($W:expr, $H:expr)),+) => {
+macro_rules! block_dimension {
+  ($(($W:expr, $H:expr)),*) => {$(
     paste::item! {
-      $(
-        pub struct [<Block $W x $H>];
-
-        impl Dim for [<Block $W x $H>] {
-          const W: usize = $W;
-          const H: usize = $H;
-        }
-      )*
+      impl<T: Pixel> Intra<T> for [<Block $W x $H>] {}
     }
-  };
+  )*};
 }
 
-blocks_dimension! {
+block_dimension! {
   (4, 4), (8, 8), (16, 16), (32, 32), (64, 64),
   (4, 8), (8, 16), (16, 32), (32, 64),
   (8, 4), (16, 8), (32, 16), (64, 32),
@@ -431,9 +471,6 @@ pub(crate) mod native {
   macro_rules! impl_intra {
     ($(($W:expr, $H:expr)),+) => {
       paste::item! {
-        $(
-          impl<T: Pixel> Intra<T> for [<Block $W x $H>] {}
-        )*
         #[inline(always)]
         pub fn dispatch_predict_intra<T: Pixel>(
           mode: PredictionMode, variant: PredictionVariant,
@@ -462,7 +499,6 @@ pub(crate) mod native {
     (16, 4), (32, 8), (64, 16)
   }
 
-  #[inline(always)]
   pub fn predict_intra_inner<B: Intra<T>, T: Pixel>(
     mode: PredictionMode, variant: PredictionVariant,
     dst: &mut PlaneRegionMut<'_, T>, bit_depth: usize, ac: &[i16],
@@ -528,6 +564,7 @@ pub(crate) mod native {
   where
     T: Pixel,
   {
+    #[inline(never)]
     fn pred_dc(
       output: &mut PlaneRegionMut<'_, T>, above: &[T], left: &[T],
       _bit_depth: usize,
@@ -548,6 +585,7 @@ pub(crate) mod native {
       }
     }
 
+    #[inline(never)]
     fn pred_dc_128(
       output: &mut PlaneRegionMut<'_, T>, _above: &[T], _left: &[T],
       bit_depth: usize,
@@ -560,6 +598,7 @@ pub(crate) mod native {
       }
     }
 
+    #[inline(never)]
     fn pred_dc_left(
       output: &mut PlaneRegionMut<'_, T>, _above: &[T], left: &[T],
       _bit_depth: usize,
@@ -574,6 +613,7 @@ pub(crate) mod native {
       }
     }
 
+    #[inline(never)]
     fn pred_dc_top(
       output: &mut PlaneRegionMut<'_, T>, above: &[T], _left: &[T],
       _bit_depth: usize,
@@ -588,6 +628,7 @@ pub(crate) mod native {
       }
     }
 
+    #[inline(never)]
     fn pred_h(output: &mut PlaneRegionMut<'_, T>, left: &[T]) {
       for (line, l) in output.rows_iter_mut().zip(left[..Self::H].iter().rev())
       {
@@ -597,12 +638,14 @@ pub(crate) mod native {
       }
     }
 
+    #[inline(never)]
     fn pred_v(output: &mut PlaneRegionMut<'_, T>, above: &[T]) {
       for line in output.rows_iter_mut().take(Self::H) {
         line[..Self::W].clone_from_slice(&above[..Self::W])
       }
     }
 
+    #[inline(never)]
     fn pred_paeth(
       output: &mut PlaneRegionMut<'_, T>, above: &[T], left: &[T],
       above_left: T,
@@ -632,6 +675,7 @@ pub(crate) mod native {
       }
     }
 
+    #[inline(never)]
     fn pred_smooth(
       output: &mut PlaneRegionMut<'_, T>, above: &[T], left: &[T],
     ) {
@@ -685,6 +729,7 @@ pub(crate) mod native {
       }
     }
 
+    #[inline(never)]
     fn pred_smooth_h(
       output: &mut PlaneRegionMut<'_, T>, above: &[T], left: &[T],
     ) {
@@ -723,6 +768,7 @@ pub(crate) mod native {
       }
     }
 
+    #[inline(never)]
     fn pred_smooth_v(
       output: &mut PlaneRegionMut<'_, T>, above: &[T], left: &[T],
     ) {
@@ -761,6 +807,7 @@ pub(crate) mod native {
       }
     }
 
+    #[inline(never)]
     fn pred_cfl_inner(
       output: &mut PlaneRegionMut<'_, T>, ac: &[i16], alpha: i16,
       bit_depth: usize,
@@ -787,6 +834,7 @@ pub(crate) mod native {
       }
     }
 
+    #[inline(never)]
     fn pred_cfl(
       output: &mut PlaneRegionMut<'_, T>, ac: &[i16], alpha: i16,
       bit_depth: usize, above: &[T], left: &[T],
@@ -795,6 +843,7 @@ pub(crate) mod native {
       Self::pred_cfl_inner(output, &ac, alpha, bit_depth);
     }
 
+    #[inline(never)]
     fn pred_cfl_128(
       output: &mut PlaneRegionMut<'_, T>, ac: &[i16], alpha: i16,
       bit_depth: usize, above: &[T], left: &[T],
@@ -803,6 +852,7 @@ pub(crate) mod native {
       Self::pred_cfl_inner(output, &ac, alpha, bit_depth);
     }
 
+    #[inline(never)]
     fn pred_cfl_left(
       output: &mut PlaneRegionMut<'_, T>, ac: &[i16], alpha: i16,
       bit_depth: usize, above: &[T], left: &[T],
@@ -811,6 +861,7 @@ pub(crate) mod native {
       Self::pred_cfl_inner(output, &ac, alpha, bit_depth);
     }
 
+    #[inline(never)]
     fn pred_cfl_top(
       output: &mut PlaneRegionMut<'_, T>, ac: &[i16], alpha: i16,
       bit_depth: usize, above: &[T], left: &[T],
@@ -819,6 +870,7 @@ pub(crate) mod native {
       Self::pred_cfl_inner(output, &ac, alpha, bit_depth);
     }
 
+    #[inline(never)]
     fn pred_directional(
       output: &mut PlaneRegionMut<'_, T>, above: &[T], left: &[T],
       top_left: &[T], angle: usize, bit_depth: usize,

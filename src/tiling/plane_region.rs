@@ -233,8 +233,8 @@ macro_rules! plane_region_common {
           self.rect.width,
           self.rect.height,
         );
-        assert!(rect.x >= 0 && rect.x as usize <= self.rect.width);
-        assert!(rect.y >= 0 && rect.y as usize <= self.rect.height);
+        debug_assert!(rect.x >= 0 && rect.x as usize <= self.rect.width);
+        debug_assert!(rect.y >= 0 && rect.y as usize <= self.rect.height);
         let data = unsafe {
           self.data.add(rect.y as usize * self.plane_cfg.stride + rect.x as usize)
         };
@@ -301,7 +301,6 @@ macro_rules! plane_region_common {
         self.to_frame_block_offset(TileBlockOffset(BlockOffset { x: 0, y: 0 }))
       }
 
-      #[cfg(feature = "check_asm")]
       pub(crate) fn scratch_copy(&self) -> Plane<T> {
         let &Rect { width, height, .. } = self.rect();
         let &PlaneConfig { xdec, ydec, .. } = self.plane_cfg;

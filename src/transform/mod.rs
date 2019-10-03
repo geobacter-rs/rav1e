@@ -13,15 +13,14 @@
 pub use self::forward::*;
 pub use self::inverse::*;
 
-use crate::context::*;
-use crate::partition::BlockSize::*;
-use crate::partition::*;
-use crate::predict::*;
+pub use rcore::transform::*;
+
+use std::convert::*;
+
 use crate::tiling::*;
 use crate::util::*;
 
 use crate::cpu_features::CpuFeatureLevel;
-use TxSize::*;
 
 mod forward;
 mod inverse;
@@ -44,192 +43,7 @@ pub static RAV1E_TX_TYPES: &[TxType] = &[
   //TxType::H_FLIPADST,
 ];
 
-static SQRT2_BITS: usize = 12;
-static SQRT2: i32 = 5793; // 2^12 * sqrt(2)
-static INV_SQRT2: i32 = 2896; // 2^12 / sqrt(2)
-
 pub const TX_TYPES: usize = 16;
-
-#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Eq, Ord)]
-#[repr(C)]
-pub enum TxType {
-  DCT_DCT = 0,   // DCT  in both horizontal and vertical
-  ADST_DCT = 1,  // ADST in vertical, DCT in horizontal
-  DCT_ADST = 2,  // DCT  in vertical, ADST in horizontal
-  ADST_ADST = 3, // ADST in both directions
-  FLIPADST_DCT = 4,
-  DCT_FLIPADST = 5,
-  FLIPADST_FLIPADST = 6,
-  ADST_FLIPADST = 7,
-  FLIPADST_ADST = 8,
-  IDTX = 9,
-  V_DCT = 10,
-  H_DCT = 11,
-  V_ADST = 12,
-  H_ADST = 13,
-  V_FLIPADST = 14,
-  H_FLIPADST = 15,
-}
-
-/// Transform Size
-#[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
-#[repr(C)]
-pub enum TxSize {
-  TX_4X4,
-  TX_8X8,
-  TX_16X16,
-  TX_32X32,
-  TX_64X64,
-
-  TX_4X8,
-  TX_8X4,
-  TX_8X16,
-  TX_16X8,
-  TX_16X32,
-  TX_32X16,
-  TX_32X64,
-  TX_64X32,
-
-  TX_4X16,
-  TX_16X4,
-  TX_8X32,
-  TX_32X8,
-  TX_16X64,
-  TX_64X16,
-}
-
-impl TxSize {
-  /// Number of square transform sizes
-  pub const TX_SIZES: usize = 5;
-
-  /// Number of transform sizes (including non-square sizes)
-  pub const TX_SIZES_ALL: usize = 14 + 5;
-
-  pub fn width(self) -> usize {
-    1 << self.width_log2()
-  }
-
-  pub fn width_log2(self) -> usize {
-    match self {
-      TX_4X4 | TX_4X8 | TX_4X16 => 2,
-      TX_8X8 | TX_8X4 | TX_8X16 | TX_8X32 => 3,
-      TX_16X16 | TX_16X8 | TX_16X32 | TX_16X4 | TX_16X64 => 4,
-      TX_32X32 | TX_32X16 | TX_32X64 | TX_32X8 => 5,
-      TX_64X64 | TX_64X32 | TX_64X16 => 6,
-    }
-  }
-
-  pub fn width_index(self) -> usize {
-    self.width_log2() - TX_4X4.width_log2()
-  }
-
-  pub fn height(self) -> usize {
-    1 << self.height_log2()
-  }
-
-  pub fn height_log2(self) -> usize {
-    match self {
-      TX_4X4 | TX_8X4 | TX_16X4 => 2,
-      TX_8X8 | TX_4X8 | TX_16X8 | TX_32X8 => 3,
-      TX_16X16 | TX_8X16 | TX_32X16 | TX_4X16 | TX_64X16 => 4,
-      TX_32X32 | TX_16X32 | TX_64X32 | TX_8X32 => 5,
-      TX_64X64 | TX_32X64 | TX_16X64 => 6,
-    }
-  }
-
-  pub fn height_index(self) -> usize {
-    self.height_log2() - TX_4X4.height_log2()
-  }
-
-  pub fn width_mi(self) -> usize {
-    self.width() >> MI_SIZE_LOG2
-  }
-
-  pub fn area(self) -> usize {
-    1 << self.area_log2()
-  }
-
-  pub fn area_log2(self) -> usize {
-    self.width_log2() + self.height_log2()
-  }
-
-  pub fn height_mi(self) -> usize {
-    self.height() >> MI_SIZE_LOG2
-  }
-
-  pub fn block_size(self) -> BlockSize {
-    match self {
-      TX_4X4 => BLOCK_4X4,
-      TX_8X8 => BLOCK_8X8,
-      TX_16X16 => BLOCK_16X16,
-      TX_32X32 => BLOCK_32X32,
-      TX_64X64 => BLOCK_64X64,
-      TX_4X8 => BLOCK_4X8,
-      TX_8X4 => BLOCK_8X4,
-      TX_8X16 => BLOCK_8X16,
-      TX_16X8 => BLOCK_16X8,
-      TX_16X32 => BLOCK_16X32,
-      TX_32X16 => BLOCK_32X16,
-      TX_32X64 => BLOCK_32X64,
-      TX_64X32 => BLOCK_64X32,
-      TX_4X16 => BLOCK_4X16,
-      TX_16X4 => BLOCK_16X4,
-      TX_8X32 => BLOCK_8X32,
-      TX_32X8 => BLOCK_32X8,
-      TX_16X64 => BLOCK_16X64,
-      TX_64X16 => BLOCK_64X16,
-    }
-  }
-
-  pub fn sqr(self) -> TxSize {
-    match self {
-      TX_4X4 | TX_4X8 | TX_8X4 | TX_4X16 | TX_16X4 => TX_4X4,
-      TX_8X8 | TX_8X16 | TX_16X8 | TX_8X32 | TX_32X8 => TX_8X8,
-      TX_16X16 | TX_16X32 | TX_32X16 | TX_16X64 | TX_64X16 => TX_16X16,
-      TX_32X32 | TX_32X64 | TX_64X32 => TX_32X32,
-      TX_64X64 => TX_64X64,
-    }
-  }
-
-  pub fn sqr_up(self) -> TxSize {
-    match self {
-      TX_4X4 => TX_4X4,
-      TX_8X8 | TX_4X8 | TX_8X4 => TX_8X8,
-      TX_16X16 | TX_8X16 | TX_16X8 | TX_4X16 | TX_16X4 => TX_16X16,
-      TX_32X32 | TX_16X32 | TX_32X16 | TX_8X32 | TX_32X8 => TX_32X32,
-      TX_64X64 | TX_32X64 | TX_64X32 | TX_16X64 | TX_64X16 => TX_64X64,
-    }
-  }
-
-  pub fn by_dims(w: usize, h: usize) -> TxSize {
-    match (w, h) {
-      (4, 4) => TX_4X4,
-      (8, 8) => TX_8X8,
-      (16, 16) => TX_16X16,
-      (32, 32) => TX_32X32,
-      (64, 64) => TX_64X64,
-      (4, 8) => TX_4X8,
-      (8, 4) => TX_8X4,
-      (8, 16) => TX_8X16,
-      (16, 8) => TX_16X8,
-      (16, 32) => TX_16X32,
-      (32, 16) => TX_32X16,
-      (32, 64) => TX_32X64,
-      (64, 32) => TX_64X32,
-      (4, 16) => TX_4X16,
-      (16, 4) => TX_16X4,
-      (8, 32) => TX_8X32,
-      (32, 8) => TX_32X8,
-      (16, 64) => TX_16X64,
-      (64, 16) => TX_64X16,
-      _ => unreachable!(),
-    }
-  }
-
-  pub fn is_rect(self) -> bool {
-    self.width_log2() != self.height_log2()
-  }
-}
 
 #[derive(Copy, Clone, PartialEq, PartialOrd)]
 pub enum TxSet {
@@ -284,163 +98,118 @@ fn clamp_value(value: i32, bit: usize) -> i32 {
   clamp(value, min_value, max_value)
 }
 
-pub fn av1_round_shift_array(arr: &mut [i32], size: usize, bit: i8) {
-  // FIXME
-  //  #[cfg(target_arch = "x86_64")]
-  //      {
-  //        if is_x86_feature_detected!("sse4.1") {
-  //          return unsafe {
-  //            x86_asm::av1_round_shift_array_sse4_1(arr, size, bit)
-  //          };
-  //        }
-  //      }
-  av1_round_shift_array_rs(arr, size, bit)
-}
-
-fn av1_round_shift_array_rs(arr: &mut [i32], size: usize, bit: i8) {
+#[inline]
+fn round_shift_array<T>(arr: &mut [i32], size: usize, bit: i8)
+where
+  T: ISimd<i32>,
+{
   if bit == 0 {
     return;
   }
+  debug_assert!(size <= arr.len(), "{} > {}", size, arr.len());
+  debug_assert_eq!(size % T::LANES, 0);
+
+  let arr = T::slice_cast_mut(arr);
+
   if bit > 0 {
-    let bit = bit as usize;
-    for i in 0..size {
-      arr[i] = round_shift(arr[i], bit);
+    let bit = bit as u32;
+    for v in arr.iter_mut() {
+      *v = v.round_shift(bit);
     }
   } else {
-    for i in 0..size {
-      arr[i] <<= -bit;
+    for v in arr.iter_mut() {
+      *v <<= T::_splat(-bit as _);
     }
   }
 }
 
-#[derive(Debug, Clone, Copy)]
-enum TxType1D {
-  DCT,
-  ADST,
-  FLIPADST,
-  IDTX,
-}
-
-// Option can be removed when the table is completely filled
-fn get_1d_tx_types(tx_type: TxType) -> Option<(TxType1D, TxType1D)> {
-  match tx_type {
-    TxType::DCT_DCT => Some((TxType1D::DCT, TxType1D::DCT)),
-    TxType::ADST_DCT => Some((TxType1D::ADST, TxType1D::DCT)),
-    TxType::DCT_ADST => Some((TxType1D::DCT, TxType1D::ADST)),
-    TxType::ADST_ADST => Some((TxType1D::ADST, TxType1D::ADST)),
-    TxType::FLIPADST_DCT => Some((TxType1D::FLIPADST, TxType1D::DCT)),
-    TxType::DCT_FLIPADST => Some((TxType1D::DCT, TxType1D::FLIPADST)),
-    TxType::FLIPADST_FLIPADST => {
-      Some((TxType1D::FLIPADST, TxType1D::FLIPADST))
-    }
-    TxType::ADST_FLIPADST => Some((TxType1D::ADST, TxType1D::FLIPADST)),
-    TxType::FLIPADST_ADST => Some((TxType1D::FLIPADST, TxType1D::ADST)),
-    TxType::IDTX => Some((TxType1D::IDTX, TxType1D::IDTX)),
-    TxType::V_DCT => Some((TxType1D::DCT, TxType1D::IDTX)),
-    TxType::H_DCT => Some((TxType1D::IDTX, TxType1D::DCT)),
-    TxType::V_ADST => Some((TxType1D::ADST, TxType1D::IDTX)),
-    TxType::H_ADST => Some((TxType1D::IDTX, TxType1D::ADST)),
-    TxType::V_FLIPADST => Some((TxType1D::FLIPADST, TxType1D::IDTX)),
-    TxType::H_FLIPADST => Some((TxType1D::IDTX, TxType1D::FLIPADST)),
-  }
-}
-
-const VTX_TAB: [TxType1D; TX_TYPES] = [
-  TxType1D::DCT,
-  TxType1D::ADST,
-  TxType1D::DCT,
-  TxType1D::ADST,
-  TxType1D::FLIPADST,
-  TxType1D::DCT,
-  TxType1D::FLIPADST,
-  TxType1D::ADST,
-  TxType1D::FLIPADST,
-  TxType1D::IDTX,
-  TxType1D::DCT,
-  TxType1D::IDTX,
-  TxType1D::ADST,
-  TxType1D::IDTX,
-  TxType1D::FLIPADST,
-  TxType1D::IDTX,
-];
-
-const HTX_TAB: [TxType1D; TX_TYPES] = [
-  TxType1D::DCT,
-  TxType1D::DCT,
-  TxType1D::ADST,
-  TxType1D::ADST,
-  TxType1D::DCT,
-  TxType1D::FLIPADST,
-  TxType1D::FLIPADST,
-  TxType1D::FLIPADST,
-  TxType1D::ADST,
-  TxType1D::IDTX,
-  TxType1D::IDTX,
-  TxType1D::DCT,
-  TxType1D::IDTX,
-  TxType1D::ADST,
-  TxType1D::IDTX,
-  TxType1D::FLIPADST,
-];
-
+#[inline(never)]
 pub fn forward_transform(
-  input: &[i16], output: &mut [i32], stride: usize, tx_size: TxSize,
-  tx_type: TxType, bit_depth: usize,
+  residual: &mut [i16], coeffs: &mut [i32], tx_size: TxSize, tx_type: TxType, bit_depth: usize,
 ) {
-  use self::TxSize::*;
-  match tx_size {
-    TX_4X4 => fht4x4(input, output, stride, tx_type, bit_depth),
-    TX_8X8 => fht8x8(input, output, stride, tx_type, bit_depth),
-    TX_16X16 => fht16x16(input, output, stride, tx_type, bit_depth),
-    TX_32X32 => fht32x32(input, output, stride, tx_type, bit_depth),
-    TX_64X64 => fht64x64(input, output, stride, tx_type, bit_depth),
-
-    TX_4X8 => fht4x8(input, output, stride, tx_type, bit_depth),
-    TX_8X4 => fht8x4(input, output, stride, tx_type, bit_depth),
-    TX_8X16 => fht8x16(input, output, stride, tx_type, bit_depth),
-    TX_16X8 => fht16x8(input, output, stride, tx_type, bit_depth),
-    TX_16X32 => fht16x32(input, output, stride, tx_type, bit_depth),
-    TX_32X16 => fht32x16(input, output, stride, tx_type, bit_depth),
-    TX_32X64 => fht32x64(input, output, stride, tx_type, bit_depth),
-    TX_64X32 => fht64x32(input, output, stride, tx_type, bit_depth),
-
-    TX_4X16 => fht4x16(input, output, stride, tx_type, bit_depth),
-    TX_16X4 => fht16x4(input, output, stride, tx_type, bit_depth),
-    TX_8X32 => fht8x32(input, output, stride, tx_type, bit_depth),
-    TX_32X8 => fht32x8(input, output, stride, tx_type, bit_depth),
-    TX_16X64 => fht16x64(input, output, stride, tx_type, bit_depth),
-    TX_64X16 => fht64x16(input, output, stride, tx_type, bit_depth),
+  macro_rules! specialize_f {
+    (@foreach_block $tx_size:expr,
+     ($(($b_x:expr, $b_y:expr),)*),
+     $f:ident $args:tt ) =>
+    {
+      // we have to create the match arms (ie `$pattern => $expression`)
+      // without using a macro. See https://github.com/rust-lang/rust/issues/12832
+      paste::expr! {
+        match $tx_size {
+        $(
+          [<TX_$b_x X$b_y>] => {
+            // call the function with this size.
+            crate::util::[<Block $b_x x $b_y>]:: $f $args;
+          },
+        )*
+          _ => {
+            unreachable!("unhandled size: {:?}", $tx_size);
+          },
+        }
+      }
+    };
+    // Instantiate $f for every size possible.
+    (@forall $tx_size:expr, $f:ident $args:tt) => {
+      specialize_f! { @foreach_block
+        $tx_size,
+        ((4, 4), (8, 8), (16, 16), (32, 32), (64, 64),
+         (4, 8), (8, 16), (16, 32), (32, 64),
+         (8, 4), (16, 8), (32, 16), (64, 32),
+         (4, 16), (8, 32), (16, 64),
+         (16, 4), (32, 8), (64, 16), ),
+        $f $args
+      }
+    };
   }
+
+  let bit_depth = bit_depth.try_into().expect("non-u8 bit depth");
+  specialize_f!(@forall tx_size, fht(residual, coeffs, tx_type, bit_depth));
 }
+pub fn inverse_transform_add<P>(
+  input: &[i32], output: &mut PlaneRegionMut<'_, P>,
+  tx_size: TxSize, tx_type: TxType,
+  bit_depth: usize,
+  cpu: CpuFeatureLevel,
+) where
+  P: Pixel,
+{
+  use rkernels::transform::inverse::dispatch;
 
-pub fn inverse_transform_add<T: Pixel>(
-  input: &[i32], output: &mut PlaneRegionMut<'_, T>, tx_size: TxSize,
-  tx_type: TxType, bit_depth: usize, cpu: CpuFeatureLevel,
-) {
-  use self::TxSize::*;
-  match tx_size {
-    TX_4X4 => iht4x4_add(input, output, tx_type, bit_depth, cpu),
-    TX_8X8 => iht8x8_add(input, output, tx_type, bit_depth, cpu),
-    TX_16X16 => iht16x16_add(input, output, tx_type, bit_depth, cpu),
-    TX_32X32 => iht32x32_add(input, output, tx_type, bit_depth, cpu),
-    TX_64X64 => iht64x64_add(input, output, tx_type, bit_depth, cpu),
+  let width = tx_size.width();
+  let height = tx_size.height();
+  assert!(
+    input.len() >= width.min(32) * height.min(32),
+    "input is smaller than the compute block: {} vs {}",
+    input.len(), width.min(32) * height.min(32),
+  );
+  assert!(
+    output.rect().height >= height && output.rect().width >= width,
+    "output is smaller than the compute block: ({}, {}) vs expected ({}, {})",
+    output.rect().width,
+    output.rect().height,
+    width,
+    height,
+  );
+  let row_tx_idx = tx_type.row_tx().tbl_idx();
+  let col_tx_idx = tx_type.col_tx().tbl_idx();
 
-    TX_4X8 => iht4x8_add(input, output, tx_type, bit_depth, cpu),
-    TX_8X4 => iht8x4_add(input, output, tx_type, bit_depth, cpu),
-    TX_8X16 => iht8x16_add(input, output, tx_type, bit_depth, cpu),
-    TX_16X8 => iht16x8_add(input, output, tx_type, bit_depth, cpu),
-    TX_16X32 => iht16x32_add(input, output, tx_type, bit_depth, cpu),
-    TX_32X16 => iht32x16_add(input, output, tx_type, bit_depth, cpu),
-    TX_32X64 => iht32x64_add(input, output, tx_type, bit_depth, cpu),
-    TX_64X32 => iht64x32_add(input, output, tx_type, bit_depth, cpu),
+  let bd = bit_depth.try_into()
+    .expect("non-u8 bit depth");
 
-    TX_4X16 => iht4x16_add(input, output, tx_type, bit_depth, cpu),
-    TX_16X4 => iht16x4_add(input, output, tx_type, bit_depth, cpu),
-    TX_8X32 => iht8x32_add(input, output, tx_type, bit_depth, cpu),
-    TX_32X8 => iht32x8_add(input, output, tx_type, bit_depth, cpu),
-    TX_16X64 => iht16x64_add(input, output, tx_type, bit_depth, cpu),
-    TX_64X16 => iht64x16_add(input, output, tx_type, bit_depth, cpu),
+  let output_stride = output.plane_cfg.stride as i32;
+
+  let r = unsafe {
+    dispatch(input.as_ptr(), output.data_ptr_mut(),
+             output_stride, bd, width.try_into().unwrap(),
+             height.try_into().unwrap(),
+             row_tx_idx, col_tx_idx,
+             tx_size, cpu)
+  };
+  if let Some(()) = r {
+    return;
   }
+
+  unimplemented!("{:?}, {:?}", tx_type, tx_size);
 }
 
 #[cfg(test)]
@@ -452,14 +221,14 @@ mod test {
 
   fn test_roundtrip<T: Pixel>(
     tx_size: TxSize, tx_type: TxType, tolerance: i16,
-  ) {
-    let mut src_storage = [T::cast_from(0); 64 * 64];
+  ) -> bool {
+    let mut src_storage = AlignedArray::new([T::cast_from(0); 64 * 64]);
     let src = &mut src_storage[..tx_size.area()];
     let mut dst =
       Plane::wrap(vec![T::cast_from(0); tx_size.area()], tx_size.width());
-    let mut res_storage = [0i16; 64 * 64];
+    let mut res_storage = AlignedArray::new([0i16; 64 * 64]);
     let res = &mut res_storage[..tx_size.area()];
-    let mut freq_storage = [0i32; 64 * 64];
+    let mut freq_storage = AlignedArray::new([0i32; 64 * 64]);
     let freq = &mut freq_storage[..tx_size.area()];
     for ((r, s), d) in
       res.iter_mut().zip(src.iter_mut()).zip(dst.data.iter_mut())
@@ -468,18 +237,29 @@ mod test {
       *d = T::cast_from(random::<u8>());
       *r = i16::cast_from(*s) - i16::cast_from(*d);
     }
-    forward_transform(res, freq, tx_size.width(), tx_size, tx_type, 8);
-    inverse_transform_add(
-      freq,
-      &mut dst.as_region_mut(),
-      tx_size,
-      tx_type,
-      8,
-      CpuFeatureLevel::default(),
-    );
+    forward_transform(res, freq, tx_size, tx_type, 8);
+    inverse_transform_add(freq, &mut dst.as_region_mut(),
+                          tx_size, tx_type, 8,
+                          CpuFeatureLevel::default());
 
-    for (s, d) in src.iter().zip(dst.data.iter()) {
-      assert!(i16::abs(i16::cast_from(*s) - i16::cast_from(*d)) <= tolerance);
+    let ne = src
+      .iter()
+      .zip(dst.data.iter())
+      .enumerate()
+      .filter(|(_, (&s, &d))| {
+        i16::abs(i16::cast_from(s) - i16::cast_from(d)) > tolerance
+      })
+      .map(|v| format!("{:?}", v))
+      .collect::<Vec<_>>();
+    if ne.len() != 0 {
+      eprintln!(
+        "tx_size = {:?}, tx_type = {:?}, tolerance = {}",
+        tx_size, tx_type, tolerance
+      );
+      eprintln!("roundtrip mismatch: {:#?}", ne);
+      false
+    } else {
+      true
     }
   }
 
@@ -562,9 +342,15 @@ mod test {
       (TX_16X32, DCT_DCT, 2),
       (TX_32X16, DCT_DCT, 2),
     ];
+    let mut failed = false;
     for &(tx_size, tx_type, tolerance) in combinations.iter() {
       println!("Testing combination {:?}, {:?}", tx_size, tx_type);
-      test_roundtrip::<T>(tx_size, tx_type, tolerance);
+      if !test_roundtrip::<T>(tx_size, tx_type, tolerance) {
+        failed = true;
+      }
+    }
+    if failed {
+      panic!("Some roundtrips failed");
     }
   }
 

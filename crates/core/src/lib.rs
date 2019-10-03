@@ -7,15 +7,11 @@
 // Media Patent License 1.0 was not distributed with this source code in the
 // PATENTS file, you can obtain it at www.aomedia.org/license/patent.
 
-cfg_if::cfg_if! {
-  if #[cfg(nasm_x86_64)] {
-    mod x86;
-    pub use x86::*;
-  } else if #[cfg(asm_neon)] {
-    mod aarch64;
-    pub use aarch64::*;
-  } else {
-    mod native;
-    pub use native::*;
-  }
-}
+pub mod context;
+pub mod cpu_features;
+pub mod lrf;
+pub mod mc;
+pub mod partition;
+pub mod predict;
+pub mod transform;
+pub mod util;

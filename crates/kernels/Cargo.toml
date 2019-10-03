@@ -1,0 +1,19 @@
+[package]
+name = "rav1e-kernels"
+version = "0.1.0"
+authors = ["Richard Diamond <wichard@vitalitystudios.com>"]
+edition = "2018"
+build = "build/main.rs"
+license = "BSD-2-Clause"
+description = "Vectorized AV1 kernels. Internal Rav1e crate; do not use."
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rcore = { path = "../core", package = "rav1e-core" }
+# the version on crates.io is really out-of-date.
+packed_simd = { git = "https://github.com/rust-lang-nursery/packed_simd.git" }
+
+[build-dependencies]
+proc-macro2 = "1.0"
+quote = "1.0"

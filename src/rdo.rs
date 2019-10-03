@@ -29,7 +29,7 @@ use crate::partition::RefType::*;
 use crate::partition::*;
 use crate::predict::{
   PredictionMode, RAV1E_INTER_COMPOUND_MODES, RAV1E_INTER_MODES_MINIMAL,
-  RAV1E_INTRA_MODES,
+  RAV1E_INTRA_MODES, PredictIntraInter,
 };
 use crate::rdo_tables::*;
 use crate::tiling::*;

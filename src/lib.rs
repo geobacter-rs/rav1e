@@ -52,13 +52,15 @@ extern crate pretty_assertions;
 
 #[macro_use]
 extern crate log;
+#[macro_use]
+extern crate rav1e_core as rcore;
 
 #[cfg(any(cargo_c, feature = "capi"))]
 pub mod capi;
 
 mod activity;
 pub(crate) mod asm;
-mod cpu_features;
+use rcore::cpu_features;
 mod dist;
 mod ec;
 mod partition;
@@ -67,8 +69,7 @@ mod quantize;
 mod rdo;
 mod rdo_tables;
 mod transform;
-#[macro_use]
-mod util;
+use rcore::util;
 mod cdef;
 mod context;
 mod deblock;

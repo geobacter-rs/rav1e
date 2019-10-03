@@ -10,31 +10,15 @@
 cfg_if::cfg_if! {
   if #[cfg(nasm_x86_64)] {
     pub use crate::asm::x86::transform::inverse::*;
-  } else {
-    pub use self::native::*;
   }
 }
-
-use crate::cpu_features::CpuFeatureLevel;
 
 // TODO: move 1d txfm code to native module.
 
 use super::*;
 
-static COSPI_INV: [i32; 64] = [
-  4096, 4095, 4091, 4085, 4076, 4065, 4052, 4036, 4017, 3996, 3973, 3948,
-  3920, 3889, 3857, 3822, 3784, 3745, 3703, 3659, 3612, 3564, 3513, 3461,
-  3406, 3349, 3290, 3229, 3166, 3102, 3035, 2967, 2896, 2824, 2751, 2675,
-  2598, 2520, 2440, 2359, 2276, 2191, 2106, 2019, 1931, 1842, 1751, 1660,
-  1567, 1474, 1380, 1285, 1189, 1092, 995, 897, 799, 700, 601, 501, 401, 301,
-  201, 101,
-];
-
-static SINPI_INV: [i32; 5] = [0, 1321, 2482, 3344, 3803];
-
-const INV_COS_BIT: usize = 12;
-
-pub fn av1_idct4(input: &[i32], output: &mut [i32], range: usize) {
+#[cfg(feature = "unused-reference-impls")]
+fn av1_idct4(input: &[i32], output: &mut [i32], range: usize) {
   assert!(input.len() >= 4);
   assert!(output.len() >= 4);
 
@@ -56,13 +40,14 @@ pub fn av1_idct4(input: &[i32], output: &mut [i32], range: usize) {
   output[3] = clamp_value(stg2[0] - stg2[3], range);
 }
 
-pub fn av1_iflipadst4(input: &[i32], output: &mut [i32], range: usize) {
+#[cfg(feature = "unused-reference-impls")]
+fn av1_iflipadst4(input: &[i32], output: &mut [i32], range: usize) {
   av1_iadst4(input, output, range);
   output[..4].reverse();
 }
 
-#[inline(always)]
-pub fn av1_iadst4(input: &[i32], output: &mut [i32], _range: usize) {
+#[cfg(feature = "unused-reference-impls")]
+fn av1_iadst4(input: &[i32], output: &mut [i32], _range: usize) {
   assert!(input.len() >= 4);
   assert!(output.len() >= 4);
 
@@ -110,14 +95,16 @@ pub fn av1_iadst4(input: &[i32], output: &mut [i32], _range: usize) {
   output[3] = round_shift(x3, bit);
 }
 
-pub fn av1_iidentity4(input: &[i32], output: &mut [i32], _range: usize) {
+#[cfg(feature = "unused-reference-impls")]
+fn av1_iidentity4(input: &[i32], output: &mut [i32], _range: usize) {
   output[..4]
     .iter_mut()
     .zip(input[..4].iter())
     .for_each(|(outp, inp)| *outp = round_shift(SQRT2 * *inp, 12));
 }
 
-pub fn av1_idct8(input: &[i32], output: &mut [i32], range: usize) {
+#[cfg(feature = "unused-reference-impls")]
+fn av1_idct8(input: &[i32], output: &mut [i32], range: usize) {
   assert!(input.len() >= 8);
   assert!(output.len() >= 8);
 
@@ -166,13 +153,14 @@ pub fn av1_idct8(input: &[i32], output: &mut [i32], range: usize) {
   output[7] = clamp_value(temp_out[0] - stg4[3], range);
 }
 
-pub fn av1_iflipadst8(input: &[i32], output: &mut [i32], range: usize) {
+#[cfg(feature = "unused-reference-impls")]
+fn av1_iflipadst8(input: &[i32], output: &mut [i32], range: usize) {
   av1_iadst8(input, output, range);
   output[..8].reverse();
 }
 
-#[inline(always)]
-pub fn av1_iadst8(input: &[i32], output: &mut [i32], range: usize) {
+#[cfg(feature = "unused-reference-impls")]
+fn av1_iadst8(input: &[i32], output: &mut [i32], range: usize) {
   assert!(input.len() >= 8);
   assert!(output.len() >= 8);
 
@@ -253,13 +241,15 @@ pub fn av1_iadst8(input: &[i32], output: &mut [i32], range: usize) {
   output[7] = -stg6[1];
 }
 
-pub fn av1_iidentity8(input: &[i32], output: &mut [i32], _range: usize) {
+#[cfg(feature = "unused-reference-impls")]
+fn av1_iidentity8(input: &[i32], output: &mut [i32], _range: usize) {
   output[..8]
     .iter_mut()
     .zip(input[..8].iter())
     .for_each(|(outp, inp)| *outp = 2 * *inp);
 }
 
+#[cfg(feature = "unused-reference-impls")]
 fn av1_idct16(input: &[i32], output: &mut [i32], range: usize) {
   assert!(input.len() >= 16);
   assert!(output.len() >= 16);
@@ -357,12 +347,13 @@ fn av1_idct16(input: &[i32], output: &mut [i32], range: usize) {
   output[15] = clamp_value(temp_out[0] - stg6[7], range);
 }
 
-pub fn av1_iflipadst16(input: &[i32], output: &mut [i32], range: usize) {
+#[cfg(feature = "unused-reference-impls")]
+fn av1_iflipadst16(input: &[i32], output: &mut [i32], range: usize) {
   av1_iadst16(input, output, range);
   output[..16].reverse();
 }
 
-#[inline(always)]
+#[cfg(feature = "unused-reference-impls")]
 fn av1_iadst16(input: &[i32], output: &mut [i32], range: usize) {
   assert!(input.len() >= 16);
   assert!(output.len() >= 16);
@@ -533,6 +524,7 @@ fn av1_iadst16(input: &[i32], output: &mut [i32], range: usize) {
   output[15] = -stg8[1];
 }
 
+#[cfg(feature = "unused-reference-impls")]
 fn av1_iidentity16(input: &[i32], output: &mut [i32], _range: usize) {
   output[..16]
     .iter_mut()
@@ -540,6 +532,7 @@ fn av1_iidentity16(input: &[i32], output: &mut [i32], _range: usize) {
     .for_each(|(outp, inp)| *outp = round_shift(SQRT2 * 2 * *inp, 12));
 }
 
+#[cfg(feature = "unused-reference-impls")]
 fn av1_idct32(input: &[i32], output: &mut [i32], range: usize) {
   assert!(input.len() >= 32);
   assert!(output.len() >= 32);
@@ -840,6 +833,7 @@ fn av1_idct32(input: &[i32], output: &mut [i32], range: usize) {
   output[31] = clamp_value(stg8[0] - stg8[31], range);
 }
 
+#[cfg(feature = "unused-reference-impls")]
 fn av1_iidentity32(input: &[i32], output: &mut [i32], _range: usize) {
   output[..32]
     .iter_mut()
@@ -847,6 +841,7 @@ fn av1_iidentity32(input: &[i32], output: &mut [i32], _range: usize) {
     .for_each(|(outp, inp)| *outp = 4 * *inp);
 }
 
+#[cfg(feature = "unused-reference-impls")]
 fn av1_idct64(input: &[i32], output: &mut [i32], range: usize) {
   assert!(input.len() >= 64);
   assert!(output.len() >= 64);
@@ -1547,6 +1542,7 @@ fn av1_idct64(input: &[i32], output: &mut [i32], range: usize) {
 
 type InvTxfmFn = fn(input: &[i32], output: &mut [i32], range: usize);
 
+#[cfg(feature = "unused-reference-impls")]
 static INV_TXFM_FNS: [[InvTxfmFn; 5]; 4] = [
   [av1_idct4, av1_idct8, av1_idct16, av1_idct32, av1_idct64],
   [
@@ -1572,143 +1568,265 @@ static INV_TXFM_FNS: [[InvTxfmFn; 5]; 4] = [
   ],
 ];
 
-pub(crate) mod native {
-  use super::*;
-  use crate::cpu_features::CpuFeatureLevel;
-  use crate::util::clamp;
-  use std::cmp;
+/* From AV1 Spec.
+https://aomediacodec.github.io/av1-spec/#2d-inverse-transform-process
 
-  pub trait InvTxfm2D: Dim {
-    const INTERMEDIATE_SHIFT: usize;
+Transform_Row_Shift[ TX_SIZES_ALL ] = {
+  0, 1, 2, 2, 2, 0, 0, 1, 1,
+  1, 1, 1, 1, 1, 1, 2, 2, 2, 2
+}*/
 
-    fn inv_txfm2d_add<T>(
-      input: &[i32], output: &mut PlaneRegionMut<'_, T>, tx_type: TxType,
-      bd: usize, _cpu: CpuFeatureLevel,
-    ) where
-      T: Pixel,
-    {
-      // For 64 point transforms, rely on the last 32 columns being initialized
-      //   to zero for filling out missing input coeffs.
-      let buffer = &mut [0i32; 64 * 64][..Self::W * Self::H];
-      let rect_type = get_rect_tx_log_ratio(Self::W, Self::H);
-      let tx_types_1d = get_1d_tx_types(tx_type)
-        .expect("TxType not supported by rust txfm code.");
-
-      // perform inv txfm on every row
-      let range = bd + 8;
-      let txfm_fn = INV_TXFM_FNS[tx_types_1d.1 as usize][Self::W.ilog() - 3];
-      for (input_slice, buffer_slice) in
-        // 64 point transforms only signal 32 coeffs. We only take chunks of 32
-        //   and skip over the last 32 transforms here.
-        input.chunks(Self::W.min(32)).take(Self::H.min(32)).
-          zip(buffer.chunks_mut(Self::W))
-      {
-        // For 64 point transforms, rely on the last 32 elements being
-        //   initialized to zero for filling out the missing coeffs.
-        let mut temp_in: [i32; 64] = [0; 64];
-        for (raw, clamped) in input_slice.iter().zip(temp_in.iter_mut()) {
-          let val = if rect_type.abs() == 1 {
-            round_shift(*raw * INV_SQRT2, SQRT2_BITS)
-          } else {
-            *raw
-          };
-          *clamped = clamp_value(val, range);
-        }
-        txfm_fn(&temp_in, buffer_slice, range);
-      }
-
-      // perform inv txfm on every col
-      let range = cmp::max(bd + 6, 16);
-      let txfm_fn = INV_TXFM_FNS[tx_types_1d.0 as usize][Self::H.ilog() - 3];
-      for c in 0..Self::W {
-        let mut temp_in: [i32; 64] = [0; 64];
-        let mut temp_out: [i32; 64] = [0; 64];
-        for (raw, clamped) in
-          buffer[c..].iter().step_by(Self::W).zip(temp_in.iter_mut())
-        {
-          *clamped =
-            clamp_value(round_shift(*raw, Self::INTERMEDIATE_SHIFT), range);
-        }
-        txfm_fn(&temp_in, &mut temp_out, range);
-        for (temp, out) in temp_out
-          .iter()
-          .zip(output.rows_iter_mut().map(|row| &mut row[c]).take(Self::H))
-        {
-          let v: i32 = (*out).as_();
-          let v = clamp(v + round_shift(*temp, 4), 0, (1 << bd) - 1);
-          *out = T::cast_from(v);
-        }
-      }
-    }
-  }
-
-  /* From AV1 Spec.
-  https://aomediacodec.github.io/av1-spec/#2d-inverse-transform-process
-
-  Transform_Row_Shift[ TX_SIZES_ALL ] = {
-    0, 1, 2, 2, 2, 0, 0, 1, 1,
-    1, 1, 1, 1, 1, 1, 2, 2, 2, 2
-  }*/
-
-  macro_rules! impl_inv_txs {
-    ($(($W:expr, $H:expr)),+ $SH:expr) => {
-      $(
-        paste::item! {
-          impl InvTxfm2D for crate::predict::[<Block $W x $H>] {
-            const INTERMEDIATE_SHIFT: usize = $SH;
-          }
-        }
-      )*
-    }
-  }
-
-  impl_inv_txs! { (4, 4), (4, 8), (8, 4) 0 }
-
-  impl_inv_txs! { (8, 8), (8, 16), (16, 8) 1 }
-  impl_inv_txs! { (4, 16), (16, 4), (16, 32), (32, 16) 1 }
-  impl_inv_txs! { (32, 64), (64, 32) 1 }
-
-  impl_inv_txs! { (16, 16), (16, 64), (64, 16), (64, 64) 2 }
-  impl_inv_txs! { (32, 32), (8, 32), (32, 8) 2 }
+pub trait InvBlock: tx_sizes::Detail + Block {
+  const INTERMEDIATE_SHIFT: u16;
 }
 
-macro_rules! impl_iht_fns {
-  ($(($W:expr, $H:expr)),+) => {
+macro_rules! impl_inv_txs {
+  ($(($W:expr, $H:expr)),+ $SH:expr) => {
     $(
       paste::item! {
-        pub fn [<iht $W x $H _add>]<T: Pixel>(
-          input: &[i32], output: &mut PlaneRegionMut<'_, T>, tx_type: TxType,
-          bit_depth: usize, cpu: CpuFeatureLevel
-        ) where
-          T: Pixel,
-        {
-          [<Block $W x $H>]::inv_txfm2d_add(
-            input, output, tx_type, bit_depth, cpu
-          );
+        impl InvBlock for [<Block $W x $H>] {
+          const INTERMEDIATE_SHIFT: u16 = $SH;
         }
       }
     )*
   }
 }
 
-impl_iht_fns!(
-  (64, 64),
-  (64, 32),
-  (32, 64),
-  (16, 64),
-  (64, 16),
-  (32, 32),
-  (32, 16),
-  (16, 32),
-  (32, 8),
-  (8, 32),
-  (16, 16),
-  (16, 8),
-  (8, 16),
-  (16, 4),
-  (4, 16),
-  (8, 8),
-  (8, 4),
-  (4, 8),
-  (4, 4)
-);
+impl_inv_txs! { (4, 4), (4, 8), (8, 4) 0 }
+
+impl_inv_txs! { (8, 8), (8, 16), (16, 8) 1 }
+impl_inv_txs! { (4, 16), (16, 4), (16, 32), (32, 16) 1 }
+impl_inv_txs! { (32, 64), (64, 32) 1 }
+
+impl_inv_txs! { (16, 16), (16, 64), (64, 16), (64, 64) 2 }
+impl_inv_txs! { (32, 32), (8, 32), (32, 8) 2 }
+
+#[cfg(all(target_arch = "x86_64", feature = "nasm"))]
+mod nasm {
+  use super::*;
+
+  type InvTxfmFunc =
+    unsafe extern fn(*mut u8, libc::ptrdiff_t, *const i16, i32);
+
+  pub trait InvTxfm2D<P>: super::native::NativeInvTxfm2D<P>
+  where
+    P: Pixel,
+    (Self::Col, <Self::Size as Block>::Vert): txfm_types::Detail,
+    (Self::Row, <Self::Size as Block>::Hori): txfm_types::Detail,
+  {
+    fn inv_txfm2d_add(
+      input: &[i32], output: &mut PlaneRegionMut<'_, P>, bd: usize,
+      cpu: CpuFeatureLevel,
+    );
+  }
+
+  macro_rules! impl_itx_fns {
+    // Takes a 2d list of tx types for W and H
+    ([$([$(($ENUM:pat, $TYPE1:ident, $TYPE2:ident)),*]),*], $W:expr, $H:expr,
+     $OPT:ident) => {
+      paste::item! {
+        // For each tx type, declare an function for the current WxH
+        $(
+          $(
+            extern {
+              // Note: type1 and type2 are flipped
+              fn [<rav1e_inv_txfm_add_ $TYPE2 _$TYPE1 _$W x $H _$OPT>](
+                dst: *mut u8, dst_stride: libc::ptrdiff_t, coeff: *const i16,
+                eob: i32
+              );
+            }
+          )*
+        )*
+
+        // Implement InvTxfm2D for WxH
+        $($(impl<P> InvTxfm2D<P> for ([<Block $W x $H>], $crate::transform::tx_2d_types::$ENUM)
+          where P: Pixel,
+        {
+          fn inv_txfm2d_add(
+            input: &[i32], output: &mut PlaneRegionMut<'_, P>, bd: usize,
+          ) {
+            if P::type_enum() == PixelType::U8 && is_x86_feature_detected!("avx2") {
+              debug_assert!(bd == 8);
+
+              // 64x only uses 32 coeffs
+              let coeff_w = $W.min(32);
+              let coeff_h = $H.min(32);
+              let mut coeff16: AlignedArray<[i16; 32 * 32]> =
+                AlignedArray::uninitialized();
+
+              // Transpose the input.
+              // TODO: should be possible to remove changing how coeffs are written
+              assert!(input.len() >= coeff_w * coeff_h);
+              for j in 0..coeff_h {
+                for i in 0..coeff_w {
+                  coeff16.array[i * coeff_h + j] = input[j * coeff_w + i] as i16;
+                }
+              }
+
+              let stride = output.plane_cfg.stride as isize;
+              unsafe {
+                // perform the inverse transform
+                [<rav1e_inv_txfm_add_ $TYPE2 _$TYPE1 _$W x $H _$OPT>](
+                  output.data_ptr_mut() as *mut _,
+                  stride,
+                  coeff16.array.as_ptr(),
+                  (coeff_w * coeff_h) as i32,
+                );
+              }
+              return;
+            }
+            <Self as super::native::NativeInvTxfm2D<P>>::inv_txfm2d_add(
+              input, output, bd, cpu,
+            );
+          }
+        })*)*
+      }
+    };
+
+    // Loop over a list of dimensions
+    ($TYPES_VALID:tt, [$(($W:expr, $H:expr)),*], $OPT:ident) => {
+      $(
+        impl_itx_fns!($TYPES_VALID, $W, $H, $OPT);
+      )*
+    };
+
+    ($TYPES64:tt, $DIMS64:tt, $TYPES32:tt, $DIMS32:tt, $TYPES16:tt, $DIMS16:tt,
+     $TYPES84:tt, $DIMS84:tt, $OPT:ident) => {
+      // Make 2d list of tx types for each set of dimensions. Each set of
+      //   dimensions uses a superset of the previous set of tx types.
+      impl_itx_fns!([$TYPES64], $DIMS64, $OPT);
+      impl_itx_fns!([$TYPES64, $TYPES32], $DIMS32, $OPT);
+      impl_itx_fns!([$TYPES64, $TYPES32, $TYPES16], $DIMS16, $OPT);
+      impl_itx_fns!(
+        [$TYPES64, $TYPES32, $TYPES16, $TYPES84], $DIMS84, $OPT
+      );
+    };
+  }
+
+  impl_itx_fns!(
+    // 64x
+    [(DctDct, dct, dct)],
+    [(64, 64), (64, 32), (32, 64), (16, 64), (64, 16)],
+    // 32x
+    [(IdId, identity, identity)],
+    [(32, 32), (32, 16), (16, 32), (32, 8), (8, 32)],
+    // 16x16
+    [
+      (DctAdst, dct, adst),
+      (AdstDct, adst, dct),
+      (DctFlipAdst, dct, flipadst),
+      (FlipAdstDct, flipadst, dct),
+      (DctId, dct, identity),
+      (IdDct, identity, dct),
+      (AdstAdst, adst, adst),
+      (AdstFlipAdst, adst, flipadst),
+      (FlipAdstAdst, flipadst, adst),
+      (FlipAdstFlipAdst, flipadst, flipadst)
+    ],
+    [(16, 16)],
+    // 8x, 4x and 16x (minus 16x16)
+    [
+      (AdstId, adst, identity),
+      (IdAdst, identity, adst),
+      (FlipAdstId, flipadst, identity),
+      (IdFlipAdst, identity, flipadst)
+    ],
+    [(16, 8), (8, 16), (16, 4), (4, 16), (8, 8), (8, 4), (4, 8), (4, 4)],
+    avx2
+  );
+
+  macro_rules! unimpl {
+    ($(($tx:ident, $(($W:expr, $H:expr),)*),)*) => {$($(
+      paste::item! {
+        impl<P> InvTxfm2D<P> for ([<Block $W x $H>], $crate::transform::tx_2d_types::$tx)
+          where P: Pixel,
+        {
+          fn inv_txfm2d_add(
+            input: &[i32], output: &mut PlaneRegionMut<'_, P>, bd: usize,
+          ) {
+            <Self as super::native::NativeInvTxfm2D<P>>::inv_txfm2d_add(
+              input, output, bd,
+            );
+          }
+        }
+      }
+    )*)*}
+  }
+  // no asm for these:
+  unimpl! {
+    (AdstDct,
+     (32, 32), (64, 64), (16, 32), (32, 64),
+     (32, 16), (64, 32), (8, 32), (16, 64),
+     (32, 8), (64, 16),
+    ),
+    (DctAdst,
+     (32, 32), (64, 64), (16, 32), (32, 64),
+     (32, 16), (64, 32), (8, 32), (16, 64),
+     (32, 8), (64, 16),
+    ),
+    (AdstAdst,
+     (32, 32), (64, 64), (16, 32), (32, 64),
+     (32, 16), (64, 32), (8, 32), (16, 64),
+     (32, 8), (64, 16),
+    ),
+    (FlipAdstDct,
+     (32, 32), (64, 64), (16, 32), (32, 64),
+     (32, 16), (64, 32), (8, 32), (16, 64),
+     (32, 8), (64, 16),
+    ),
+    (DctFlipAdst,
+     (32, 32), (64, 64), (16, 32), (32, 64),
+     (32, 16), (64, 32), (8, 32), (16, 64),
+     (32, 8), (64, 16),
+    ),
+    (FlipAdstFlipAdst,
+     (32, 32), (64, 64), (16, 32), (32, 64),
+     (32, 16), (64, 32), (8, 32), (16, 64),
+     (32, 8), (64, 16),
+    ),
+    (AdstFlipAdst,
+     (32, 32), (64, 64), (16, 32), (32, 64),
+     (32, 16), (64, 32), (8, 32), (16, 64),
+     (32, 8), (64, 16),
+    ),
+    (FlipAdstAdst,
+     (32, 32), (64, 64), (16, 32), (32, 64),
+     (32, 16), (64, 32), (8, 32), (16, 64),
+     (32, 8), (64, 16),
+    ),
+    (IdId,
+     (64, 64), (32, 64), (64, 32), (16, 64),
+     (64, 16),
+    ),
+    (DctId,
+     (32, 32), (64, 64), (16, 32), (32, 64),
+     (32, 16), (64, 32), (8, 32), (16, 64),
+     (32, 8), (64, 16),
+    ),
+    (IdDct,
+     (32, 32), (64, 64), (16, 32), (32, 64),
+     (32, 16), (64, 32), (8, 32), (16, 64),
+     (32, 8), (64, 16),
+    ),
+    (AdstId,
+     (16, 16), (32, 32), (64, 64), (16, 32),
+     (32, 64), (32, 16), (64, 32), (8, 32),
+     (16, 64), (32, 8), (64, 16),
+    ),
+    (IdAdst,
+     (16, 16), (32, 32), (64, 64), (16, 32),
+     (32, 64), (32, 16), (64, 32), (8, 32),
+     (16, 64), (32, 8), (64, 16),
+    ),
+    (FlipAdstId,
+     (16, 16), (32, 32), (64, 64), (16, 32),
+     (32, 64), (32, 16), (64, 32), (8, 32),
+     (16, 64), (32, 8), (64, 16),
+    ),
+    (IdFlipAdst,
+     (16, 16), (32, 32), (64, 64), (16, 32),
+     (32, 64), (32, 16), (64, 32), (8, 32),
+     (16, 64), (32, 8), (64, 16),
+    ),
+  }
+}

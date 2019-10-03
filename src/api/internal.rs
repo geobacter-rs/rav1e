@@ -17,7 +17,7 @@ use crate::encoder::*;
 use crate::frame::*;
 use crate::metrics::calculate_frame_psnr;
 use crate::partition::*;
-use crate::predict::PredictionMode;
+use crate::predict::{PredictionMode, PredictIntraInter, };
 use crate::rate::RCState;
 use crate::rate::FRAME_NSUBTYPES;
 use crate::rate::FRAME_SUBTYPE_I;

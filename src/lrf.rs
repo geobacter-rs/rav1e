@@ -9,14 +9,6 @@
 
 #![allow(safe_extern_statics)]
 
-cfg_if::cfg_if! {
-  if #[cfg(nasm_x86_64)] {
-    use crate::asm::x86::lrf::*;
-  } else {
-    use self::native::*;
-  }
-}
-
 use crate::context::PLANES;
 use crate::context::SB_SIZE;
 use crate::encoder::FrameInvariants;
@@ -32,64 +24,10 @@ use crate::util::ILog;
 use crate::util::Pixel;
 
 use std::cmp;
+use std::convert::*;
 use std::ops::{Index, IndexMut};
 
-pub const RESTORATION_TILESIZE_MAX_LOG2: usize = 8;
-
-pub const RESTORE_NONE: u8 = 0;
-pub const RESTORE_SWITCHABLE: u8 = 1;
-pub const RESTORE_WIENER: u8 = 2;
-pub const RESTORE_SGRPROJ: u8 = 3;
-
-pub const WIENER_TAPS_MIN: [i8; 3] = [-5, -23, -17];
-pub const WIENER_TAPS_MID: [i8; 3] = [3, -7, 15];
-pub const WIENER_TAPS_MAX: [i8; 3] = [10, 8, 46];
-#[allow(unused)]
-pub const WIENER_TAPS_K: [i8; 3] = [1, 2, 3];
-pub const WIENER_BITS: usize = 7;
-
-pub const SGRPROJ_XQD_MIN: [i8; 2] = [-96, -32];
-pub const SGRPROJ_XQD_MID: [i8; 2] = [-32, 31];
-pub const SGRPROJ_XQD_MAX: [i8; 2] = [31, 95];
-pub const SGRPROJ_PRJ_SUBEXP_K: u8 = 4;
-pub const SGRPROJ_PRJ_BITS: u8 = 7;
-pub const SGRPROJ_PARAMS_BITS: u8 = 4;
-pub const SGRPROJ_MTABLE_BITS: u8 = 20;
-pub const SGRPROJ_SGR_BITS: u8 = 8;
-pub const SGRPROJ_RECIP_BITS: u8 = 12;
-pub const SGRPROJ_RST_BITS: u8 = 4;
-pub const SGRPROJ_PARAMS_S: [[u32; 2]; 1 << SGRPROJ_PARAMS_BITS] = [
-  [140, 3236],
-  [112, 2158],
-  [93, 1618],
-  [80, 1438],
-  [70, 1295],
-  [58, 1177],
-  [47, 1079],
-  [37, 996],
-  [30, 925],
-  [25, 863],
-  [0, 2589],
-  [0, 1618],
-  [0, 1177],
-  [0, 925],
-  [56, 0],
-  [22, 0],
-];
-
-pub const SOLVE_IMAGE_MAX: usize = (1 << RESTORATION_TILESIZE_MAX_LOG2);
-pub const SOLVE_IMAGE_STRIDE: usize = SOLVE_IMAGE_MAX + 6 + 2;
-pub const SOLVE_IMAGE_HEIGHT: usize = SOLVE_IMAGE_STRIDE;
-pub const SOLVE_IMAGE_SIZE: usize = SOLVE_IMAGE_STRIDE * SOLVE_IMAGE_HEIGHT;
-
-pub const STRIPE_IMAGE_MAX: usize = (1 << RESTORATION_TILESIZE_MAX_LOG2)
-  + (1 << (RESTORATION_TILESIZE_MAX_LOG2 - 1));
-pub const STRIPE_IMAGE_STRIDE: usize = STRIPE_IMAGE_MAX + 6 + 2;
-pub const STRIPE_IMAGE_HEIGHT: usize = 64 + 6 + 2;
-pub const STRIPE_IMAGE_SIZE: usize = STRIPE_IMAGE_STRIDE * STRIPE_IMAGE_HEIGHT;
-
-pub const IMAGE_WIDTH_MAX: usize = [STRIPE_IMAGE_MAX, SOLVE_IMAGE_MAX]
-  [(STRIPE_IMAGE_MAX < SOLVE_IMAGE_MAX) as usize];
+pub use rcore::lrf::*;
 
 /// The buffer used in `sgrproj_stripe_filter()` and `sgrproj_solve()`.
 #[derive(Debug)]
@@ -153,6 +91,7 @@ impl RestorationFilter {
   }
 }
 
+#[cfg(feature = "unused-reference-impls")]
 pub(crate) mod native {
   use crate::cpu_features::CpuFeatureLevel;
   use crate::frame::PlaneSlice;
@@ -301,7 +240,7 @@ pub(crate) mod native {
   }
 }
 
-#[inline(always)]
+#[cfg(feature = "unused-reference-impls")]
 fn sgrproj_sum_finish(
   ssq: u32, sum: u32, n: u32, one_over_n: u32, s: u32, bdm8: usize,
 ) -> (u32, u32) {
@@ -323,6 +262,7 @@ fn sgrproj_sum_finish(
 }
 
 // Using an integral image, compute the sum of a square region
+#[cfg(feature = "unused-reference-impls")]
 fn get_integral_square(
   iimg: &[u32], stride: usize, x: usize, y: usize, size: usize,
 ) -> u32 {
@@ -585,6 +525,48 @@ pub fn sgrproj_stripe_filter<T: Pixel>(
   stripe_w: usize, stripe_h: usize, cdeffed: &PlaneSlice<T>,
   out: &mut PlaneMutSlice<T>,
 ) {
+  use rkernels::lrf::stripe::dispatch;
+
+  let bdm8 = fi.sequence.bit_depth - 8;
+  let integral_image = &integral_image_buffer.integral_image;
+  let sq_integral_image = &integral_image_buffer.sq_integral_image;
+
+  let stripe_w = stripe_w.try_into().expect("trunc overflow");
+  let stripe_h = stripe_h.try_into().expect("trunc overflow");
+  let b = (stripe_w, stripe_w);
+
+  let cdeffed_stride = cdeffed.plane.cfg.stride
+    .try_into()
+    .expect("trunc overflow");
+  let out_stride = out.plane.cfg.stride
+    .try_into()
+    .expect("trunc overflow");
+  let r = unsafe {
+    dispatch(set, xqd,
+             integral_image.as_ptr(),
+             sq_integral_image.as_ptr(),
+             integral_image_stride as _,
+             cdeffed.as_ptr(),
+             cdeffed_stride,
+             out[0].as_mut_ptr(),
+             out_stride,
+             bdm8 as _,
+             stripe_h,
+             b, fi.cpu_feature_level)
+  };
+  if let Some(r) = r {
+    return r;
+  }
+
+  unimplemented!("{:?}", b);
+}
+#[cfg(feature = "unused-reference-impls")]
+fn sgrproj_stripe_filter_ref<T: Pixel>(
+  set: u8, xqd: [i8; 2], fi: &FrameInvariants<T>,
+  integral_image_buffer: &IntegralImageBuffer, integral_image_stride: usize,
+  stripe_w: usize, stripe_h: usize, cdeffed: &PlaneSlice<T>,
+  out: &mut PlaneMutSlice<T>,
+) {
   let bdm8 = fi.sequence.bit_depth - 8;
   let mut a_r2: [[u32; IMAGE_WIDTH_MAX + 2]; 2] =
     [[0; IMAGE_WIDTH_MAX + 2]; 2];
@@ -762,6 +744,45 @@ pub fn sgrproj_stripe_filter<T: Pixel>(
 // Input params follow the same rules as sgrproj_stripe_filter.
 // Inputs are relative to the colocated slice views.
 pub fn sgrproj_solve<T: Pixel>(
+  set: u8, fi: &FrameInvariants<T>,
+  integral_image_buffer: &IntegralImageBuffer, input: &PlaneSlice<T>,
+  cdeffed: &PlaneSlice<T>, cdef_w: usize, cdef_h: usize,
+) -> (i8, i8) {
+  use rkernels::lrf::solve::dispatch;
+  let bdm8 = fi.sequence.bit_depth - 8;
+  let integral_image = &integral_image_buffer.integral_image;
+  let sq_integral_image = &integral_image_buffer.sq_integral_image;
+
+  let cdef_w = cdef_w.try_into().expect("trunc overflow");
+  let cdef_h = cdef_h.try_into().expect("trunc overflow");
+  let b = (cdef_w, cdef_w);
+
+  let cdeffed_stride = cdeffed.plane.cfg.stride
+    .try_into()
+    .expect("trunc overflow");
+  let input_stride = input.plane.cfg.stride
+    .try_into()
+    .expect("trunc overflow");
+  let r = unsafe {
+    dispatch(set,
+             integral_image.as_ptr(),
+             sq_integral_image.as_ptr(),
+             cdeffed.as_ptr(),
+             cdeffed_stride,
+             input.as_ptr(),
+             input_stride,
+             bdm8 as _,
+             cdef_h,
+             b, fi.cpu_feature_level)
+  };
+  if let Some(r) = r {
+    return r;
+  }
+
+  unimplemented!("{:?}", b);
+}
+#[cfg(feature = "unused-reference-impls")]
+fn sgrproj_solve_ref<T: Pixel>(
   set: u8, fi: &FrameInvariants<T>,
   integral_image_buffer: &IntegralImageBuffer, input: &PlaneSlice<T>,
   cdeffed: &PlaneSlice<T>, cdef_w: usize, cdef_h: usize,

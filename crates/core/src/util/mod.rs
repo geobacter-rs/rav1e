@@ -10,21 +10,29 @@
 use num_traits::*;
 use std::fmt::{Debug, Display};
 use std::mem::{size_of, MaybeUninit};
+use std::ops::{Deref, DerefMut};
+
+pub use self::simd::*;
+
+pub mod simd;
 
 //TODO: Nice to have (although I wasn't able to find a way to do it yet in rust): zero-fill arrays that are
 // shorter than required.  Need const fn (Rust Issue #24111) or const generics (Rust RFC #2000)
+#[macro_export]
 macro_rules! cdf {
     ($($x:expr),+) =>  {[$(32768 - $x),+, 0, 0]}
 }
 
+#[macro_export]
 macro_rules! cdf_size {
   ($x:expr) => {
     $x + 1
   };
 }
 
-#[repr(align(32))]
-pub struct Align32;
+#[repr(align(64))]
+#[derive(Clone, Copy)]
+pub struct Align64;
 
 // A 16 byte aligned array.
 // # Examples
@@ -35,8 +43,9 @@ pub struct Align32;
 // let mut x: AlignedArray<[i16; 64 * 64]> = AlignedArray::uninitialized();
 // assert!(x.array.as_ptr() as usize % 16 == 0);
 // ```
+#[derive(Clone, Copy)]
 pub struct AlignedArray<ARRAY> {
-  _alignment: [Align32; 0],
+  _alignment: [Align64; 0],
   pub array: ARRAY,
 }
 
@@ -46,6 +55,17 @@ impl<A> AlignedArray<A> {
   }
   pub fn uninitialized() -> Self {
     Self::new(unsafe { MaybeUninit::uninit().assume_init() })
+  }
+}
+impl<A> Deref for AlignedArray<A> {
+  type Target = A;
+  fn deref(&self) -> &A {
+    &self.array
+  }
+}
+impl<A> DerefMut for AlignedArray<A> {
+  fn deref_mut(&mut self) -> &mut A {
+    &mut self.array
   }
 }
 
@@ -125,6 +145,7 @@ impl_cast_from_primitive!(i32 => { u32, u64, usize });
 impl_cast_from_primitive!(i32 => { i8, i16, i32, i64, isize });
 
 /// Types that can be used as pixel types.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, PartialOrd, Ord)]
 pub enum PixelType {
   /// 8 bits per pixel, stored in a `u8`.
   U8,
@@ -218,3 +239,83 @@ pub fn msb(x: i32) -> i32 {
 pub const fn round_shift(value: i32, bit: usize) -> i32 {
   (value + (1 << bit >> 1)) >> bit
 }
+
+pub trait Block: Default + Copy {
+  type Vert: Line;
+  type Hori: Line;
+
+  const WIDTH_LOG2: usize = <Self::Hori as Line>::LOG2;
+  const WIDTH: usize = 1 << Self::WIDTH_LOG2;
+
+  const HEIGHT_LOG2: usize = <Self::Vert as Line>::LOG2;
+  const HEIGHT: usize = 1 << Self::HEIGHT_LOG2;
+
+  const AREA: usize = 1 << Self::AREA_LOG2;
+  const AREA_LOG2: usize = Self::WIDTH_LOG2 + Self::HEIGHT_LOG2;
+
+  fn width(&self) -> usize {
+    Self::WIDTH
+  }
+  fn width_log2(&self) -> usize {
+    Self::WIDTH_LOG2
+  }
+  fn height(&self) -> usize {
+    Self::HEIGHT
+  }
+  fn height_log2(&self) -> usize {
+    Self::HEIGHT_LOG2
+  }
+  fn area(&self) -> usize {
+    Self::AREA
+  }
+  fn area_log2(&self) -> usize {
+    Self::AREA_LOG2
+  }
+}
+
+macro_rules! block_dimension {
+  ($W:expr, $H:expr) => {
+    paste::item! {
+      #[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+      pub struct [<Block $W x $H>];
+      impl Block for [<Block $W x $H>] {
+        type Vert = [<Line $H>];
+        type Hori = [<Line $W>];
+      }
+    }
+  };
+}
+
+macro_rules! blocks_dimension {
+  ($(($W:expr, $H:expr)),+) => {
+    $(
+      block_dimension! { $W, $H }
+    )*
+  }
+}
+
+blocks_dimension! { (4, 4), (8, 8), (16, 16), (32, 32), (64, 64), (128, 128) }
+blocks_dimension! { (4, 8), (8, 16), (16, 32), (32, 64), (64, 128) }
+blocks_dimension! { (8, 4), (16, 8), (32, 16), (64, 32), (128, 64) }
+blocks_dimension! { (4, 16), (8, 32), (16, 64) }
+blocks_dimension! { (16, 4), (32, 8), (64, 16) }
+
+pub trait Line: Default + Copy {
+  const LENGTH: usize;
+  const LOG2: usize;
+}
+macro_rules! lines {
+  ($(($l:expr, $l2:expr), )*) => {
+    $(
+      paste::item! {
+        #[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+        pub struct [<Line $l>];
+        impl Line for [<Line $l>] {
+          const LENGTH: usize = $l;
+          const LOG2: usize = $l2;
+        }
+      }
+    )*
+  };
+}
+lines! { (4, 2), (8, 3), (16, 4), (32, 5), (64, 6), (128, 7), }

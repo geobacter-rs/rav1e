@@ -20,7 +20,6 @@ use crate::frame::*;
 use crate::header::ReferenceMode;
 use crate::lrf::*;
 use crate::mc::MotionVector;
-use crate::partition::BlockSize::*;
 use crate::partition::RefType::*;
 use crate::partition::*;
 use crate::predict::PredictionMode;
@@ -28,7 +27,6 @@ use crate::predict::PredictionMode::*;
 use crate::scan_order::*;
 use crate::tiling::*;
 use crate::token_cdfs::*;
-use crate::transform::TxSize::*;
 use crate::transform::TxType::*;
 use crate::transform::*;
 use crate::util::{clamp, msb, AlignedArray, Pixel};
@@ -47,7 +45,7 @@ const PARTITION_CONTEXTS_PRIMARY: usize =
 pub const PARTITION_CONTEXTS: usize = PARTITION_CONTEXTS_PRIMARY;
 pub const PARTITION_TYPES: usize = 4;
 
-pub const MI_SIZE_LOG2: usize = 2;
+pub use rcore::context::MI_SIZE_LOG2;
 pub const MI_SIZE: usize = (1 << MI_SIZE_LOG2);
 pub const MAX_MIB_SIZE_LOG2: usize = (MAX_SB_SIZE_LOG2 - MI_SIZE_LOG2);
 pub const MIB_SIZE_LOG2: usize = (SB_SIZE_LOG2 - MI_SIZE_LOG2);
@@ -128,30 +126,7 @@ static av1_tx_ind: [[usize; TX_TYPES]; TX_SETS] = [
   [7, 8, 9, 12, 10, 11, 13, 14, 15, 0, 1, 2, 3, 4, 5, 6],
 ];
 
-pub static max_txsize_rect_lookup: [TxSize; BlockSize::BLOCK_SIZES_ALL] = [
-  TX_4X4,   // 4x4
-  TX_4X8,   // 4x8
-  TX_8X4,   // 8x4
-  TX_8X8,   // 8x8
-  TX_8X16,  // 8x16
-  TX_16X8,  // 16x8
-  TX_16X16, // 16x16
-  TX_16X32, // 16x32
-  TX_32X16, // 32x16
-  TX_32X32, // 32x32
-  TX_32X64, // 32x64
-  TX_64X32, // 64x32
-  TX_64X64, // 64x64
-  TX_64X64, // 64x128
-  TX_64X64, // 128x64
-  TX_64X64, // 128x128
-  TX_4X16,  // 4x16
-  TX_16X4,  // 16x4
-  TX_8X32,  // 8x32
-  TX_32X8,  // 32x8
-  TX_16X64, // 16x64
-  TX_64X16, // 64x16
-];
+pub use rcore::context::max_txsize_rect_lookup;
 
 pub static sub_tx_size_map: [TxSize; TxSize::TX_SIZES_ALL] = [
   TX_4X4,   // TX_4X4
@@ -1946,14 +1921,7 @@ macro_rules! symbol_with_update {
   };
 }
 
-pub fn av1_get_coded_tx_size(tx_size: TxSize) -> TxSize {
-  match tx_size {
-    TX_64X64 | TX_64X32 | TX_32X64 => TX_32X32,
-    TX_16X64 => TX_16X32,
-    TX_64X16 => TX_32X16,
-    _ => tx_size,
-  }
-}
+pub use rcore::context::av1_get_coded_tx_size;
 
 #[derive(Clone)]
 pub struct ContextWriterCheckpoint {

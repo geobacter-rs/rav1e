@@ -12,7 +12,6 @@
 #![allow(dead_code)]
 
 use crate::context::*;
-use crate::partition::BlockSize::*;
 use crate::partition::*;
 use crate::transform::*;
 

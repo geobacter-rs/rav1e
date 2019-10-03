@@ -554,6 +554,7 @@ impl<'a, T: Pixel> PlaneSlice<'a, T> {
     PlaneSlice { plane: self.plane, x: self.x - i as isize, y: self.y }
   }
 
+  #[cfg(feature = "unused-reference-impls")]
   pub fn p(&self, add_x: usize, add_y: usize) -> T {
     let new_y =
       (self.y + add_y as isize + self.plane.cfg.yorigin as isize) as usize;
